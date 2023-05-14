@@ -1,0 +1,86 @@
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class Solution {
+
+  public static class TokenizerMapper
+       extends Mapper<LongWritable, Text, Text, IntWritable>{
+
+    private Text word = new Text();
+    private IntWritable count = new IntWritable();
+
+    public void map(LongWritable key, Text value, Context context
+                    ) throws IOException, InterruptedException {
+      String[] parts = value.toString().split("\\s+");
+      word.set(parts[0]);
+      count.set(Integer.parseInt(parts[1]));
+      context.write(word, count);
+    }
+  }
+
+  public static class IntArrayWritable extends ArrayWritable {
+    public IntArrayWritable() {
+      super(IntWritable.class);
+    }
+
+    public IntArrayWritable(Integer[] values) {
+      super(IntWritable.class);
+      IntWritable[] writableValues = new IntWritable[values.length];
+      for (int i = 0; i < values.length; i++) {
+        writableValues[i] = new IntWritable(values[i]);
+      }
+      set(writableValues);
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder();
+      for (Writable writable : get()) {
+        sb.append(writable.toString()).append(",");
+      }
+      sb.setLength(sb.length() - 1);
+      return sb.toString();
+    }
+  }
+
+  public static class IntArrayReducer extends Reducer<Text, IntWritable, Text, IntArrayWritable> {
+    private IntArrayWritable outputValue = new IntArrayWritable();
+
+    public void reduce(Text key, Iterable<IntWritable> values, Context context)
+        throws IOException, InterruptedException {
+      ArrayList<Integer> list = new ArrayList<Integer>();
+      for (IntWritable value : values) {
+        list.add(value.get());
+      }
+      Collections.sort(list, Collections.reverseOrder());
+      Integer[] array = list.toArray(new Integer[0]);
+      outputValue.set(new IntArrayWritable(array));
+      context.write(key, outputValue);
+    }
+  }
+
+  public static void main(String[] args) throws Exception {
+    Configuration conf = new Configuration();
+    Job job = Job.getInstance(conf, "sort");
+    job.setJarByClass(Solution.class);
+    job.setMapperClass(TokenizerMapper.class);
+    job.setReducerClass(IntArrayReducer.class);
+    job.setOutputKeyClass(Text.class);
+    job.setOutputValueClass(IntArrayWritable.class);
+    FileInputFormat.addInputPath(job, new Path(args[0]));
+    FileOutputFormat.setOutputPath(job, new Path(args[1]));
+    System.exit(job.waitForCompletion(true) ? 0 : 1);
+  }
+}
